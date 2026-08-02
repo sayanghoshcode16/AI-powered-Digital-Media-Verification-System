@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Verification Result</title>
+</head>
+<body>
+    <h1>Result</h1>
+    {% if image_path %}
+        <img src="{{ url_for('static', filename=image_path) }}" alt="Uploaded media" style="max-width: 500px;">
+    {% endif %}
+    <br>
+    <a href="/">Upload another file</a>
+</body>
+</html>
