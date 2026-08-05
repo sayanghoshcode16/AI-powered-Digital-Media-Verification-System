@@ -1,0 +1,43 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+bin/
+lib/
+include/
+
+# Python caching & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Large Machine Learning Models & Weights
+*.pth
+*.pt
+*.onnx
+*.bin
+*.pb
+*.h5
+*.pkl
+*.ckpt
+model/model.pth
+
+# User uploads & temporary files
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Local configurations & secrets
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.vscode/
+.idea/
+
+# System-specific files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
