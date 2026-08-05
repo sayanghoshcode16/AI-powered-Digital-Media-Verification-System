@@ -2,10 +2,14 @@ import os
 import uuid
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
 from utils.preprocess import is_allowed_file, validate_and_preprocess_image, cleanup_old_uploads
 
+# Load environment variables from .env
+load_dotenv()
+
 app = Flask(__name__)
-app.secret_key = "deepshield_secret_key_change_in_production"
+app.secret_key = os.environ.get("SECRET_KEY", "deepshield_fallback_secret_key_change_in_production")
 
 # Configuration
 UPLOAD_FOLDER = os.path.join('static', 'uploads')
@@ -64,20 +68,34 @@ def upload_image():
         
     # 2. Check extension & secure file name with UUID (Prevents Path Traversal)
     if file and is_allowed_file(file.filename):
-        ext = file.filename.rsplit('.', 1)[1].lower()
-        unique_filename = f"{uuid.uuid4().hex}.{ext}"
-        saved_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+        # Sanitize filename (secure_filename usage as requested in Task 5.2)
+        safe_filename = secure_filename(file.filename)
+        ext = safe_filename.rsplit('.', 1)[1].lower() if '.' in safe_filename else 'png'
         
+        unique_filename = f"{uuid.uuid4().hex}.{ext}"
+        
+        # Ensure uploads directory is resolved absolutely to prevent traversal breakout
+        base_upload_dir = os.path.abspath(app.config['UPLOAD_FOLDER'])
+        saved_path = os.path.abspath(os.path.join(base_upload_dir, unique_filename))
+        
+        # Security validation: confirm path stays within upload directory boundary
+        if not saved_path.startswith(base_upload_dir):
+            flash("Path traversal attempt blocked.", "error")
+            return redirect(url_for('index'))
+            
         file.save(saved_path)
         
-        # 3. Validate & Preprocess image (Member 4 pipeline)
+        # 3. Validate & Preprocess image (Member 4 pipeline, fortified with magic byte signature checks)
         processed_tensor, _ = validate_and_preprocess_image(saved_path)
         
         if processed_tensor is None:
-            # Delete corrupted/invalid file
+            # Delete corrupted/spoofed file
             if os.path.exists(saved_path):
-                os.remove(saved_path)
-            flash("Invalid or corrupted image file.", "error")
+                try:
+                    os.remove(saved_path)
+                except Exception as e:
+                    print(f"[Cleanup Error] Failed to delete invalid file: {e}")
+            flash("Security check failed: Invalid image format or signature spoofing detected.", "error")
             return redirect(url_for('index'))
             
         # 4. Pass tensor to prediction model
@@ -97,6 +115,31 @@ def upload_image():
         
     flash("File type not allowed. Please upload JPG, JPEG, or PNG.", "error")
     return redirect(url_for('index'))
+
+
+@app.after_request
+def add_security_headers(response):
+    """
+    Appends security headers to every response to mitigate common client-side web vulnerabilities.
+    """
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:;"
+    )
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
+
+
+@app.errorhandler(400)
+def bad_request(error):
+    """Handle bad requests gracefully."""
+    flash("Bad request parameters.", "error")
+    return redirect(url_for('index')), 400
 
 
 @app.errorhandler(413)
